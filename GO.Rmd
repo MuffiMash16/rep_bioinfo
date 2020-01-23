@@ -1,0 +1,104 @@
+---
+title: "GO Analysis on mus-musculus dataset"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+library(clusterProfiler)
+library(magrittr)
+library(dplyr)
+library(clusterProfiler)
+library(ggplot2)
+library(tidyr)
+library(tidytext)
+library(SummarizedExperiment)
+library(org.Mm.eg.db)
+
+knitr::opts_chunk$set(echo = FALSE)
+
+```
+
+## R Markdown
+
+```{r}
+# ----- Dataset -------------
+data_file <- readRDS("../data/data14Features.rds")
+
+analysis_data <- data_file@metadata$limma[, "Sirt_vs_Mock", ] %>%
+  as.data.frame() %>%
+  dplyr::select(effect,p) %>%
+  cbind(.,ENTREZ_ID = rowData(data_file)$ENTREZID)
+
+analysis_data$ENTREZ_ID <- analysis_data$ENTREZ_ID %>%
+  stringr::str_split(.,";",simplify=TRUE) %>%
+  .[,1]
+
+geneList <- analysis_data %>% dplyr::filter(ENTREZ_ID != "" & effect != "") %>%   dplyr::select(ENTREZ_ID,effect,p)
+
+#define groups 1-3
+geneList <- mutate(geneList, grp_id = ifelse(p <= 0.05 & effect <= 0, 1,
+                                                   ifelse(p <= 0.05 & effect >= 0, 2, 3)))
+
+
+
+# Remove duplicate values
+any(duplicated(geneList$ENTREZ_ID))
+# --- Filter for non duplicated items - Not implemented
+
+
+```
+
+
+```{r}
+# Option 1 - 
+no_of_grps <- geneList$grp_id %>% unique() %>% .[!is.na(.)]
+
+ora_list <- no_of_grps %>% lapply(., function(x){
+  gene_oi <- geneList %>% dplyr::filter(grp_id == x & ENTREZ_ID != "")
+  enrichr_result <- enrichGO(gene = gene_oi$ENTREZ_ID,
+                             universe = geneList$ENTREZ_ID,
+                             OrgDb = org.Mm.eg.db,
+                             ont = "CC",
+                             pvalueCutoff = 0.01,
+                             pAdjustMethod = "BH",
+                             qvalueCutoff = 0.05,
+                             readable = TRUE)
+  enrichr_result@result %>%
+    dplyr::mutate(p_log = -1*log(pvalue, 10))%>%
+    dplyr::filter(p_log > 1.3) -> enrchresult_Grp
+  enrchresult_Grp %>% 
+    mutate(grp_id = x)
+})
+
+# Bind data frames returned from all groups  and save it as a data frame
+# do.call(rbind, .) only accepts lists. hence we convert it into a DF in the next line
+ora_list_df <- ora_list %>% do.call(rbind, .)
+```
+
+
+```{r}
+# Option 2 - a seperate gene data frame is used
+gene <- geneList$ENTREZ_ID
+
+gene.df <- bitr(gene, 
+                fromType = "ENTREZID",
+                toType = c("ENSEMBL","SYMBOL"),
+                OrgDb = org.Mm.eg.db)
+head(gene.df)
+
+e_go_2 <- enrichGO(gene = gene.df$ENSEMBL,
+                   universe = geneList,
+                   OrgDb = org.Mm.eg.db,
+                   keyType = "ENSEMBL",
+                   ont = "CC" ,
+                   pvalueCutoff = 0.01,
+                   pAdjustMethod = "BH",
+                   qvalueCutoff = 0.05)
+head(e_go_2)
+
+# Map Gene ID to Gene Symbol using setreadable() or readble = TRUE
+e_go_2_symbol <- setReadable(e_go_2, OrgDb = org.Mm.eg.db)
+head(e_go_2_symbol)
+
+
