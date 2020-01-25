@@ -1,0 +1,72 @@
+library(clusterProfiler)																									
+library(magrittr)																									
+library(dplyr)																									
+library(clusterProfiler)																									
+library(ggplot2)																									
+library(tidyr)																									
+library(tidytext)																									
+library(SummarizedExperiment)	
+library(ReactomePA)
+
+# ----- Dataset -------------																									
+#data_file <- readRDS("../data/data14Features.rds")																									
+data_file <- readRDS("data14Features.rds")																									
+
+analysis_data <- data_file@metadata$limma[, "Sirt_vs_Mock", ] %>%																									
+  as.data.frame() %>%																									
+  dplyr::select(effect,p) %>%																									
+  cbind(.,ENTREZ_ID = rowData(data_file)$ENTREZID)																									
+
+analysis_data$ENTREZ_ID <- analysis_data$ENTREZ_ID %>%																									
+  stringr::str_split(.,";",simplify=TRUE) %>%																									
+  .[,1]																									
+
+geneList <- analysis_data %>% dplyr::filter(ENTREZ_ID != "" & effect != "") %>%   dplyr::select(ENTREZ_ID,effect,p)																									
+
+#define groups 1-3																									
+geneList <- mutate(geneList, grp_id = ifelse(p <= 0.05 & effect <= 0, 1,																									
+                                             ifelse(p <= 0.05 & effect >= 0, 2, 3)))																									
+
+gene_num_vec <- geneList[, 2]																									
+names(gene_num_vec) <- as.character(geneList[, 1])																									
+gene_num_vec <- sort(gene_num_vec, decreasing = TRUE, na.last = TRUE)																									
+
+# Remove duplicate values																									
+any(duplicated(names(gene_num_vec)))																									
+gene_num_vec <- gene_num_vec[!duplicated(names(gene_num_vec))]																									
+
+
+# OPTION 2 - Plot enricher result																									
+# Gene ID and Gene Universe are not ordered																									
+
+no_of_grps <- geneList$grp_id %>% unique() %>% .[!is.na(.)]																									
+
+ora_list <- no_of_grps %>% lapply(., function(x){																									
+  gene_oi <- geneList %>% dplyr::filter(grp_id == x & ENTREZ_ID != "")																									
+  enrichr_result <- enrichPathway(gene = gene_oi$ENTREZ_ID,universe = geneList$ENTREZ_ID,organism ="mouse",pvalueCutoff = 0.05)																									
+  enrichr_result@result %>%																									
+    dplyr::mutate(p_log = -1*log(pvalue, 10))%>%																									
+    dplyr::filter(p_log > 1.3) -> enrchresult_Grp																									
+  enrchresult_Grp %>%																									
+    mutate(grp_id = x)																									
+})																									
+
+# Bind data frames returned from all groups  and save it as a data frame																									
+# do.call(rbind, .) only accepts lists. hence we convert it into a DF in the next line																									
+ora_list_df <- ora_list %>% do.call(rbind, .)																									
+
+# df ordered by p_log																									
+plot <- ora_list_df%>%																									
+  arrange(grp_id, p_log) %>%																									
+  mutate(order = row_number())																									
+
+#---Plotting -----------------------------																									
+plot %>%																									
+  ggplot(aes(x=order,y= p_log)) +																									
+  geom_bar(stat = "identity", fill="salmon2", alpha=0.8)+																									
+  facet_wrap(~grp_id)+																									
+  theme_bw()+																									
+  scale_x_continuous(																									
+    breaks = plot$order,labels = plot$Description, c(0,0)																									
+  )+																									
+  coord_flip()																									
