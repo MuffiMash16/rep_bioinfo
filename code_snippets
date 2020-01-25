@@ -1,2 +1,2 @@
-#remove duplicate rows based on Columns
+#----------- remove duplicate rows based on Columns --------------
 complete_gene_df_no_dup <- complete_gene_df[!duplicated(complete_gene_df$ENTREZID),]
