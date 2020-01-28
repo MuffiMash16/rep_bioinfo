@@ -5,7 +5,9 @@ complete_gene_df_no_dup <- complete_gene_df[!duplicated(complete_gene_df$ENTREZI
 use "coord_flip()" arguments to manipulate the number of records shown in x and y axis since we have so many
 
 
+# ---- pass diff value into argument-----
 
+use ...
 
 
 # --------- KNITTING R MARKDOWN --------------
