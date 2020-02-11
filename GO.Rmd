@@ -23,7 +23,7 @@ knitr::opts_chunk$set(echo = FALSE)
 
 ```{r}
 # ----- Dataset -------------
-data_file <- readRDS("../data/data14Features.rds")
+data_file <- readRDS("~/data14Features.rds")
 
 analysis_data <- data_file@metadata$limma[, "Sirt_vs_Mock", ] %>%
   as.data.frame() %>%
@@ -60,12 +60,12 @@ ora_list <- no_of_grps %>% lapply(., function(x){
                              universe = geneList$ENTREZ_ID,
                              OrgDb = org.Mm.eg.db,
                              ont = "CC",
-                             pvalueCutoff = 0.01,
+                             pvalueCutoff = 0.05,
                              pAdjustMethod = "BH",
                              qvalueCutoff = 0.05,
                              readable = TRUE)
   enrichr_result@result %>%
-    dplyr::mutate(p_log = -1*log(pvalue, 10))%>%
+    dplyr::mutate(p_log = -1*log(pvalue, 10)) %>%
     dplyr::filter(p_log > 1.3) -> enrchresult_Grp
   enrchresult_Grp %>% 
     mutate(grp_id = x)

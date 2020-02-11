@@ -1,0 +1,289 @@
+---
+title: "clustering_4 - Data _Festure table based"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(clusterProfiler)
+library(ggplot2)
+library(tidyr)
+library(tidytext)
+library(magrittr)
+library(BiocManager)
+library(SummarizedExperiment)
+library(mixOmics)
+library(remotes)
+library(assertive.types)
+library(autonomics)
+library(pheatmap)
+library(ppclust)
+library(enrichplot)
+library(org.Mm.eg.db)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+data_file <- readRDS("~/data14Features.rds")
+```
+
+
+```{r}
+# data_prep ()function returns an object that has Feautre details + p and effect[@limma]- a DF with 16 columns
+data_prep <- function(data_input_file, contrast_def_name){
+  data_input_file_result <- data_input_file@metadata$limma[,contrast_def_name,] %>% 
+    as.data.frame() %>% 
+    dplyr::select(effect,p) %>% 
+    tibble::rownames_to_column(var= "feature_id") %>% 
+    dplyr::left_join(fdata(data_input_file), ., by = "feature_id")
+    #dplyr::filter(ENTREZID != "" & p != "")
+  return(data_input_file_result)
+  }
+```
+
+
+```{r}
+# data_prep () - call the  function
+# fdata(data_file) <- data_prep(data_file,"Sirt_vs_Mock")
+
+v1_data_file <- data_prep(data_file, "Sirt_vs_Mock")
+
+```
+
+```{r}
+add_cluster <- function (data_input_file,
+                         type = NULL,
+                         contrast_def_name = NULL,
+                         sig_level = 0.05,
+                         dclust_sig = 0.05,
+                         k = 5,
+                         plot = FALSE,
+                         ...){
+  
+  assertive.types::assert_is_any_of(type, classes = c("NULL", "character"))
+  assertive.types::assert_is_any_of(contrast_def_name, classes = c("NULL", "character"))
+  sig_level %>% assertive.types::assert_is_a_number()
+  k %>% assertive.types::assert_is_a_number() %>%
+    assertive.numbers::assert_all_are_whole_numbers() %>%
+        assertive.numbers::assert_all_are_greater_than(0)
+
+  contrast_def_name <- match.arg(contrast_def_name, names(data_input_file@metadata$contrastdefs), several.ok = FALSE)
+  type <- match.arg(type, c("pval", "pval_bins", "bins", "dclust", "fuzzy"), several.ok = FALSE)
+
+  if (type == "pval") {
+    x <- data_prep(data_input_file, contrast_def_name) %>% 
+      dplyr::mutate(clust_pval =  ifelse(p <= sig_level & effect <= 0, 1,ifelse(p <= sig_level & effect >= 0, 2, 3)))
+    return (x)
+  }
+    
+  if (type == "pval_bins"){
+    fdata(data_input_file) <- data_prep(data_input_file,contrast_def_name ) %>%
+      dplyr::mutate(clust_pbins = ifelse(p <= 0.05 & effect <= 0, 1,
+                                        ifelse(p <= 0.22 & p > 0.05 & effect <= 0, 2,
+                                               ifelse(p <= 0.5 & p > 0.22 & effect <= 0, 3,
+                                                      ifelse(p <= 0.5 & p > 0.22 & effect >= 0, 4,
+                                                             ifelse(p <= 0.22 & p > 0.05 & effect >= 0, 5,
+                                                                    6))))))
+    return(fdata(data_input_file))
+  }
+  
+  if (type == "bins"){
+    fdata(data_input_file) <- data_prep(data_input_file, contrast_def_name) %>%
+      dplyr::mutate(clust_bins = cut(p, k, labels = seq(1, k, by=1)))
+    return(fdata(data_input_file))
+    }
+} 
+
+   #  if (type == "dclust") {
+   #    subgroup_oi <- object@metadata$contrastdefs[contrast] %>% stringr::str_split("-", simplify = TRUE)
+   #    
+   #    p_oi <- (object@metadata$limma[, contrast, "p"] <= dclust_sig) %>%
+   #      replace(is.na(.), FALSE)
+   #    
+   #    exprs_vals <- exprs(object)[, object$subgroup %in% subgroup_oi] %>%
+   #      .[p_oi, ] %>%
+   #      replace(is.na(.), 0) ### needs better permutation of NAs
+   #    
+   #    out <- pheatmap::pheatmap(exprs_vals,
+   #                              scale = "row",
+   #                              clustering_distance_rows = "euclidean",
+   #                              clustering_distance_cols = "euclidean",
+   #                              clustering_method = "complete", show_rownames = FALSE)
+   #    
+   #    fdata(object) <- cutree(out$tree_row, k = k) %>% 
+   #      as.data.frame() %>% 
+   #      `colnames<-`(c("clust_dclust")) %>% 
+   #      tibble::rownames_to_column(var = "feature_id") %>%
+   #      dplyr::left_join(fdata(object), ., by = "feature_id")
+   #    
+   #    if(plot == TRUE) {
+   #      plot(out$tree_row)
+   #      abline(h = out$tree_row$height[length(out$tree_row$height)-(k-2)], 
+   #               col = "red", lty = 2, lwd = 2)
+   #    }
+   #    
+   #  return(object) 
+    # }
+ 
+    # fuzzy will not be implemented now
+    # if (type == "fuzzy") {
+    #     out <- ppclust::fcm(data, centers=3)
+    #     ppclust::plotcluster(out, trans=TRUE)
+    #     return(out)
+    # }  
+
+```
+
+```{r}
+# ---- Test - add cluster function by calling it  -----
+
+fdata(data_file) <- add_cluster(data_file,
+            type = "pval",
+            contrast_def_name = "Sirt_vs_Mock",
+            sig_level = 0.05,
+            dclust_sig = 0.05,
+            k = 5,
+            plot = FALSE)
+
+```
+
+
+```{r}
+# --------- Annotation Function -- Default should not be Null, change it later----
+# -- This function should contain links for species other than mouse
+
+annotate_func <- function(type = NULL, species = NULL)
+  {
+  type <- match.arg(type, c("wiki", "kegg", "go"), several.ok = FALSE)
+  #species <- match.arg(type, c("Mus_musculus", "Homo_sapiens"), several.ok = FALSE)
+  
+  if (type == "wiki" & species == "Mus_musculus")
+    {
+    #wiki <- read.gmt("~/r_projects/mashood_ora/data/wikipathways-20191210-gmt-Mus_musculus.gmt")%>%
+       wiki <- read.gmt("~/GitHub/rep_bioinfo/wikipathways-20191210-gmt-Mus_musculus.gmt")%>%
+      tidyr::separate(ont,c("name","version","wpid","org"),"%")
+    wiki_result <- wiki %>% dplyr::select(wpid,gene,name)
+    return(wiki_result)
+  }
+  
+  if (type == "kegg" & species == "Mus_musculus")
+  {
+    
+  }
+  
+  if (type == "go" & species == "Mus_musculus")
+  {
+    
+  }
+}
+```
+
+```{r}
+# --------- Annotate Function - Call Function ----------------
+annotate_func_result <- annotate_func(type = "wiki",species =  "Mus_musculus") 
+
+```
+
+```{r}
+# ORA_function - works only after we pass values into the add_cluster( )
+
+# step 1 - call add cluster funcion and save the result - here im working with pval + sirt_vs_mock
+
+ 
+
+ora_funct <- function(data_input_file, 
+                      type = NULL,
+                      contrast_def_name = NULL,
+                      dbtype = NULL,
+                      organismDb = "mouse")
+  {
+  analysis_data <- add_cluster(data_input_file,
+                               type = NULL,
+                               contrast_def_name = NULL,
+                               sig_level = 0.05,
+                               dclust_sig = 0.05,
+                               k = 5,
+                               plot = FALSE)
+  
+# 1. Handling data passed into "data_input_file"
+gene_universe <- analysis_data %>% .[ ,c("ENTREZID")] %>% as.character()
+  
+# !! Value in no_of_groups will vary based on the value passed in to add_cluster func-- include it here
+no_of_grps <- analysis_data$clust_pval %>% unique() %>% .[!is.na(.)]
+dbtype <- match.arg(dbtype, c("wiki_enrich","kegg_enrich","go_enrich"), several.ok = FALSE) 
+
+if (dbtype == "wiki_enrich"){
+    wiki_ora_result <- no_of_grps %>% lapply(.,function(x){
+            gene_oi <- analysis_data %>% dplyr::filter(clust_pval == x & ENTREZID != "")
+            wiki_enrichr_result <- enricher(gene = gene_oi$ENTREZID, universe = gene_universe,pvalueCutoff = 0.05, TERM2GENE = annotate_func(type = "wiki", species = "Mus_musculus") %>% dplyr::select(wpid,gene), TERM2NAME = annotate_func(type = "wiki",species = "Mus_musculus") %>% dplyr::select(wpid,name))
+    })
+}
+
+if (dbtype == "go_enrich"){
+  go_ora_result <- no_of_grps %>% lapply(.,function(x){
+    gene_oi <- analysis_data %>% dplyr::filter(clust_pval == x & ENTREZID != "")
+    go_enrichr_result <- enrichGO(gene = gene_oi$ENTREZID,
+                                  universe = gene_universe,
+                                  OrgDb = org.Mm.eg.db,
+                                  ont = "CC",
+                                  pvalueCutoff = 0.05,
+                                  pAdjustMethod = "BH",
+                                  qvalueCutoff = 0.05,
+                                  readable = TRUE)
+    })
+  }
+
+if (dbtype == "kegg_enrich"){
+  kk_ora_result <- no_of_grps %>% lapply(.,function(x){
+    gene_oi <- analysis_data %>% dplyr::filter(clust_pval == x & ENTREZID != "")
+    kegg_enrichr_result <-enrichKEGG(gene = gene_oi$ENTREZID ,universe = gene_universe, organism = "mmu", pvalueCutoff = 0.05)
+    })
+  }
+}
+    
+```
+
+```{r}
+# TESTING ORA_FUNCTION
+test_ora_funct <- ora_funct(data_file, dbtype = "kegg_enrich", type ="pval", contrast_def_name = "Sirt_vs_Mock")
+View(test_ora_funct)
+
+```
+
+```{r}
+# funtion to handle the process prior to plotting
+# add_cluster () + ora () then the below function
+# COMPLETE THIS FUNCTION
+
+overall_function <- function(data_input_file, type, contrast_def_name, dbtype){
+  contrast_list <- c("Sirt_vs_Mock", "Sirt", "Mock")
+  group_on_list <- c("pval", "pval_bins", "bins")
+  db_list <- c("wiki", "go", "kegg")
+  
+  for (contrast_i in contrast_list) {
+    for (grpon_i in group_on_list) {
+      analysis_data <- add_cluster(data_input_file, type, contrast_def_name)
+      for (dblist_i in db_list) {
+        ora_list <- ora_funct(data_input_file, dbtype)
+        
+      }
+    }
+    
+  }
+}
+
+```
+
+```{r}
+plot_df <- overall_function(data_file, "pval", "Sirt_vs_Mock", "kegg")
+
+plot_df <- overall_function(data_input_file = data_file,
+                 type ="pval",
+                 contrast_def_name = "Sirt_vs_Mock",
+                 dbtype = "kegg")
+
+```
+
+
+

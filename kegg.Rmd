@@ -22,7 +22,7 @@ knitr::opts_chunk$set(echo = FALSE)
 
 ```{r}
 # ----- Dataset -------------
-data_file <- readRDS("../data/data14Features.rds")
+data_file <- readRDS("~/data14Features.rds")
 analysis_data <- data_file@metadata$limma[, "Sirt_vs_Mock", ] %>%
   as.data.frame() %>%
   dplyr::select(effect,p) %>%
@@ -94,7 +94,7 @@ View(plot)
 # OPTION 2 - Plot enricher result
 # Gene ID and Gene Universe are not ordered
 
-o_of_grps <- geneList$grp_id %>% unique() %>% .[!is.na(.)]
+no_of_grps <- geneList$grp_id %>% unique() %>% .[!is.na(.)]
 
 ora_list <- no_of_grps %>% lapply(., function(x){
   gene_oi <- geneList %>% dplyr::filter(grp_id == x & ENTREZ_ID != "")

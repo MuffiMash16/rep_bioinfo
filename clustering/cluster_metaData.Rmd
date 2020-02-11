@@ -1,0 +1,151 @@
+---
+title: "Clustering_5 - limma based - with latest changes - updated add cluster function"
+output: html_notebook
+---
+ 
+```{r setup, include=FALSE}
+library(dplyr)
+library(clusterProfiler)
+library(ggplot2)
+library(tidyr)
+library(tidytext)
+library(magrittr)
+library(BiocManager)
+library(SummarizedExperiment)
+library(mixOmics)
+library(remotes)
+library(assertive.types)
+library(autonomics)
+library(pheatmap)
+library(ppclust)
+library(enrichplot)
+library(org.Mm.eg.db)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#data_file <- readRDS("../data/data14Features.rds")
+data_file <- readRDS("../data14Features.rds")
+
+```
+
+```{r}
+# ----- Create a new array with updated metadata - same object should have this new info--------
+
+object <- data_file
+
+S4Vectors::metadata(data_file)$cluster <- array(dim = c(nrow(data_file@metadata$limma), ncol(data_file@metadata$limma),5),
+                                             dimnames = list(feature = rownames(data_file@metadata$limma),
+                                                             contrast = colnames(data_file@metadata$limma),
+                                                             quantity = c("effect", "p", "pval", "pval_bins", "bins")))
+
+# View the new section
+data_file@metadata$cluster %>% View()
+
+
+S4Vectors::metadata(data_file)$cluster[, , "effect"] <- data_file@metadata$limma[, , "effect"]
+S4Vectors::metadata(data_file)$cluster[, , "p"] <- data_file@metadata$limma[, , "p"]
+S4Vectors::metadata(data_file)$cluster[, , "pval"] <- pass a value
+S4Vectors::metadata(data_file)$cluster[, , "pval_bins"] <- pass a value
+S4Vectors::metadata(data_file)$cluster[, , "bins"] <- pass a value
+
+
+add_cluster_p_bin <- function (object,
+                         type = NULL,
+                         contrast = NULL,
+                         sig_level = 0.05,
+                         dclust_sig = 0.05,
+                         k = 5,
+                         plot = FALSE,
+                         ...){
+ assertive.types::assert_is_any_of(type, classes = c("NULL", "character"))
+  assertive.types::assert_is_any_of(contrast, classes = c("NULL", "character"))
+  sig_level %>% assertive.types::assert_is_a_number()
+  k %>% assertive.types::assert_is_a_number() %>%
+    assertive.numbers::assert_all_are_whole_numbers() %>%
+        assertive.numbers::assert_all_are_greater_than(0)
+
+  contrast <- match.arg(contrast, names(object@metadata$contrastdefs), several.ok = FALSE)
+  type <- match.arg(type, c("pval", "pval_bins", "bins"), several.ok = FALSE)
+
+  if (type == "pval") {
+    data_file@metadata$cluster[,1,] -> Mock
+    data_file@metadata$cluster[,2,] -> Sirt
+    data_file@metadata$cluster[,3,] -> Sirt_vs_Mock
+    
+   result <- Sirt_vs_Mock %>% fill(pval = ifelse(p <= 0.05 & effect <= 0, Sirt_vs_Mock[ ,3] <- 1,
+                                        ifelse(p <= 0.05 & effect > 0, Sirt_vs_Mock[ ,3] <- 2,Sirt_vs_Mock[ ,3] <- 3)))
+    
+    
+    Sirt_vs_Mock
+    
+    
+     # try https://www.datacamp.com/community/tutorials/tutorial-on-loops-in-r
+    
+    for (i in 1:p_data){
+      if p_data(i) > 0.05,p_id(ii)=1
+    }
+  
+      
+  for (i in dim(p_data)){
+    if (i < 0.5){
+           dim(p_id) = 1
+           }
+         else
+           dim(p_id) = 2
+  }
+       
+    
+    
+    
+# p_data %>% 
+#       ifelse (p_data[,1] <= 0.05, p_id[,1] == 1,
+#                                  ifelse(p_data[,2] > 0.05,p_id[,2] == 2,3))
+#       
+    
+                                       
+    return(fdata(object))
+    }
+    
+  if (type == "pval_bins"){
+    fdata(object) <- data_prep(object) %>%
+      dplyr::mutate(clust_pbins = ifelse(p <= 0.05 & effect <= 0, 1,
+                                        ifelse(p <= 0.22 & p > 0.05 & effect <= 0, 2,
+                                               ifelse(p <= 0.5 & p > 0.22 & effect <= 0, 3,
+                                                      ifelse(p <= 0.5 & p > 0.22 & effect >= 0, 4,
+                                                             ifelse(p <= 0.22 & p > 0.05 & effect >= 0, 5,
+                                                                    6))))))
+    return(fdata(object))
+    }
+  
+  if (type == "bins"){
+    fdata(object) <- data_prep(object) %>%
+      dplyr::mutate(clust_bins = cut(p, k, labels = seq(1, k, by=1)))
+    return(object)
+    }
+} 
+
+  
+  
+  
+  
+  
+  
+add_cluster_dclust_fuzz <- function (object,
+                         type = NULL,
+                         contrast = NULL,
+                         sig_level = 0.05,
+                         dclust_sig = 0.05,
+                         k = 5,
+                         plot = FALSE,
+                         ...){
+  
+ 
+
+```
+
+```{r}
+
+```
+

@@ -31,7 +31,7 @@ This is the analysis part
 ```{r cars}
 
 # Dataset from DOSE
-data_file <- readRDS("../data/data14Features.rds")
+data_file <- readRDS("~/data14Features.rds")
 
 analysis_data <-metadata(data_file)$limma[,"Sirt_vs_Mock",]%>%
   as.data.frame()%>%
