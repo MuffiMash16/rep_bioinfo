@@ -27,7 +27,9 @@ library(enrichplot)
 
 ```{r setup, include=FALSE}
 # Dataset
-data_file <- readRDS("../data/data14Features.rds")
+# data_file <- readRDS("../data/data14Features.rds")
+data_file <- readRDS("~/data14Features.rds")
+
 
 ```
 
@@ -92,21 +94,33 @@ add_cluster <- function (object,
     
    
     if (type == "dclust") {
+      # Fetches the Contrast Defs name and splits the text at "-"
       subgroup_oi <- object@metadata$contrastdefs[contrast] %>% stringr::str_split("-", simplify = TRUE)
       
+      # Fetches records where P is less than dclust_sig, passed at the begining
+      # Returns a logical vector
+      # gene of interest 
       p_oi <- (object@metadata$limma[, contrast, "p"] <= dclust_sig) %>%
         replace(is.na(.), FALSE)
       
+      # exprs() returns a matrix that contain experiment data
+      # compares <data_file$subgroups> against the <@metadata$contrastdefs>
+      # Filter experiment data - display only proteins that have a sig_level > 0.05
+      # [%in%] returns a logical vector indicating if there is a match or not for its left operand
+      # subsetting based on a certain condition
       exprs_vals <- exprs(object)[, object$subgroup %in% subgroup_oi] %>%
         .[p_oi, ] %>%
         replace(is.na(.), 0) ### needs better permutation of NAs
       
+      # Use the filtered experiment result on proteins vs. samples for plotting
       out <- pheatmap::pheatmap(exprs_vals,
                                 scale = "row",
                                 clustering_distance_rows = "euclidean",
                                 clustering_distance_cols = "euclidean",
                                 clustering_method = "complete", show_rownames = FALSE)
       
+      # the output will have info related to the number of clusters 
+      # 
       fdata(object) <- cutree(out$tree_row, k = k) %>% 
         as.data.frame() %>% 
         `colnames<-`(c("clust_dclust")) %>% 
@@ -137,139 +151,4 @@ add_cluster <- function (object,
 result_p <- add_cluster(data_file, type = "dclust", contrast = "Sirt_vs_Mock", sig_level = 0.05 ,k = 4, plot = TRUE)
 
 ```
-
-
-```{r}
-# Load Wikipathway info
-
-wiki <- read.gmt("~/r_projects/mashood_ora/data/wikipathways-20191210-gmt-Mus_musculus.gmt")%>%
-  tidyr::separate(ont,c("name","version","wpid","org"),"%")
-
-wiki_geneID <- wiki %>% dplyr::select(wpid,gene)
-wiki_geneName <- wiki%>% dplyr::select(wpid,name)
-
-```
-
-```{r}
-# pending plot tree after cutting
-
-```
-
-```{r}
-#Function to do ORA
-add_ora <- function(object, type = NULL, contrast = NULL){
-  contrast <- match.arg(contrast, names(object@metadata$contrastdefs), several.ok = FALSE)
-  
-  #-----object_2 has cleaned,filtered data
-  object_2 <- object@metadata$limma[,contrast,] %>% 
-      as.data.frame() %>% 
-      dplyr::select(effect,p) %>%
-      tibble::rownames_to_column(var= "feature_id") %>%
-      dplyr::left_join(fdata(object), ., by = "feature_id") 
-    
-  # preparing data for ORA
-  object_2$ENTREZID <- object_2$ENTREZID %>% stringr::str_split(.,";",simplify = TRUE) %>% .[,1]
-  
-  # UPDATE -
-  # Removes records without P values
-  object_2 <- object_2 %>% dplyr::filter(ENTREZID != "" & p != "")
-  object_2 <- mutate(object_2, Grp_ID = ifelse(p <= 0.05 & effect <= 0,1,
-                                                       ifelse(p <= 0.05 & effect >= 0,2,3)))
-  
-  # Gene_Universe should include all records  from OBJECT 2 where ENTREZID is not NULL & p values is not NULL
-  gene_universe <- object_2 %>% dplyr::filter(!is.na(Grp_ID) & ENTREZID != "" )
-  no_of_grps <- object_2$Grp_ID %>% unique() %>% .[!is.na(.)]
-  
-  ora_list <- no_of_grps %>% lapply(., function(x){
-    gene_oi <- object_2 %>% dplyr::filter(Grp_ID == x)
-    enrichr_result <- enricher(gene_oi$ENTREZID, TERM2GENE = wiki_geneID,TERM2NAME = wiki_geneName, universe = gene_universe$ENTREZID, pvalueCutoff = 0.05)
-    enrichr_result@result %>% 
-      dplyr::mutate(p_log = -1*log(pvalue, 10))%>%
-      dplyr::filter(p_log > 1.3) -> enrchresult_Grp
-   enrchresult_Grp %>% mutate(Group_ID = x)
-  })
-  
-ora_list_df <- ora_list %>% do.call(rbind, .)
-  
-return(ora_list_df)
-  
-}
-
-```
-
-
-```{r}
-# Function to plot - coding is based on object = data_file
-# Fetch object from the previous function and plot it - we can either filter for records or not filter it
-plot_ORA_outcome <- function(object,
-                             type = NULL
-                             #contrast = NULL
-                             ){
-  
-  data_prep(object)
-  
-  type <- match.arg(type, c("BarPlot","DotPlot","Heatmap"), several.ok = FALSE)
-  #contrast <- match.arg(contrast, names(object@metadata$contrastdefs), several.ok = FALSE)
-  # Check result in add_cluster function
-  # check values passed into the add_cluster function; type = pval 
-  # Note:- to print the diagram - assign it to an object and then return(object_name) 
-  # multi returns are not allowed
-  
-  if (type == "BarPlot")
-    {
-    plot <- object %>% arrange(Group_ID, p_log) %>% mutate(order = row_number())
-    plot_BarPlot <- plot %>% ggplot(aes(x=order,y= p_log)) +
-      geom_bar(stat = "identity", fill="salmon2", alpha=0.8)+
-      facet_wrap(~Group_ID) +
-      coord_flip() +
-      scale_x_continuous(breaks = plot$order,labels = plot$Description, position = "bottom") + 
-      theme_bw()
-    return(plot_BarPlot)
-    }
-  
-  if (type == "DotPlot")
-    {
-    plot <- object %>% arrange(Group_ID, p_log) 
-    plot_DotPlot <- plot %>%
-      ggplot(aes(x = Description, y = p_log)) + 
-      geom_dotplot(binaxis = 'y', stackdir = 'center', dotsize = 1.3, stackratio = 1.5, fill = "red" ) +
-      facet_wrap(~Group_ID) +
-      coord_flip() +
-      #(breaks = plot$order,labels = plot$Description) + 
-      theme_bw()
-    
-    return(plot_DotPlot)
-    
-  }
-  # -----------*************** ADD NUM MATR----------
-  if (type == "Heatmap"){
-    
-    plot <- object %>% arrange(Group_ID, p_log)
-    
-    plot_Heatmap <- pheatmap::pheatmap(add_matrix,
-                                                scale = "row",
-                                                clustering_distance_rows = "euclidean", 
-                                                clustering_distance_cols = "euclidean",
-                                                clustering_method = "complete", 
-                                                show_rownames = FALSE)
-    
-    # get a matrix and draw a heatmap
-  return(plot_Heatmap)
-    
-  }
-   
-  
-}
-
-```
-
-```{r}
-# Call function add_ora()
-# Call function plot_ORA_outcome = Bar plot
-ora_list_df <- add_ora(data_file, contrast = "Sirt_vs_Mock")
-plot_ORA_outcome(ora_list_df, type = "BarPlot")
-plot_ORA_outcome(ora_list_df, type = "DotPlot")
-plot_ORA_outcome(ora_list_df, type = "Heatmap")
-```
-
 
