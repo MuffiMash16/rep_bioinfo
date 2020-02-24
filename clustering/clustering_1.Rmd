@@ -1,0 +1,157 @@
+---
+title: "clustering_1" 
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# install all packages mentioned in https://github.com/bhagwataditya/autonomics 
+
+library(dplyr)
+library(clusterProfiler)
+library(ggplot2)
+library(tidyr)
+library(tidytext)
+library(ReactomePA)
+library(org.Mm.eg.db)
+library(magrittr)
+library(BiocManager)
+library(SummarizedExperiment)
+library(mixOmics)
+library(remotes)
+library(assertive.types)
+library(autonomics)
+library(pheatmap)
+library(ppclust)
+
+```
+
+```{r setup, include=FALSE}
+# Dataset
+data_file <- readRDS("../data/data14Features.rds")
+
+```
+
+```{r}
+
+add_cluster <- function (object,
+                         type = NULL,
+                         contrast = NULL,
+                         sig_level = 0.05,
+                         k = 5,
+                         plot = FALSE,
+                         ...){
+    # "..." means we can pass any functions inside the main functions, as arguments 
+    
+    # assertive returns meaningful error messages
+    assertive.types::assert_is_any_of(type, classes = c("NULL", "character"))
+    assertive.types::assert_is_any_of(contrast, classes = c("NULL", "character"))
+    sig_level %>% assertive.types::assert_is_a_number() 
+    k %>% assertive.types::assert_is_a_number() %>% 
+        assertive.numbers::assert_all_are_whole_numbers() %>% 
+        assertive.numbers::assert_all_are_greater_than(0)
+    
+     # CONTRAST - specify contrast_defs from Data frame, @contrastDefs  
+    contrast <- match.arg(contrast, names(object@metadata$contrastdefs), several.ok = FALSE)
+    
+    # ----------- TYPE - if type is NULL the first value in the vector which is "pval" will be considered
+    type <- match.arg(type, c("pval", "pval_bins", "bins", "dclust", "fuzzy"), several.ok = FALSE)
+    
+    
+    #----------- Data preparation stage
+    # analysis_data <- object@metadata$limma[, "Sirt_vs_Mock", ]    
+    analysis_data <- object@metadata$limma[, contrast,  ] %>%
+        as.data.frame() %>%
+        dplyr::select(effect,p) %>%
+        cbind(.,ENTREZ_ID = rowData(data_file)$ENTREZID)
+    
+    analysis_data$ENTREZ_ID <- analysis_data$ENTREZ_ID %>%
+            stringr::str_split(.,";",simplify=TRUE) %>%	
+            .[,1]
+    geneList <- analysis_data %>% dplyr::filter(ENTREZ_ID != "" & effect != "") %>%
+            dplyr::select(ENTREZ_ID,effect,p)
+    
+    # -------------------------------------------------------------------------
+    if (type == "pval") {
+        # creates a new col based on p.AND attach p,effect,cluster to features
+        object@metadata$limma[, contrast, ] %>%
+            as.data.frame() %>%
+            dplyr::mutate(cluster_id =  ifelse(p <= sig_level & effect <= 0, 1,ifelse(p <= sig_level & effect >= 0, 2, 3))) %>%
+            dplyr::select(p, effect, cluster_id) %>%
+            cbind(., fdata(object)) -> fdata(object)
+         
+        # pending - Reorder columns - 
+        
+        # fdata(object)$pval_cluster <- object@metadata$limma[, contrast, quantity = "p"]
+        # fdata(object)$pval_cluster <- object@metadata$limma[, contrast, quantity = "p"] > fdata(object) %>% View()
+
+        
+        # In object(Summarized Experiment) - create a new column called pval_cluster - values for this column should be fetched from $limma probability
+        # this is just a rough code, don't soldier it, enhance it
+        # objective is not to have many lists in the Data section
+      
+    return (object)
+    }
+    
+# check the structure of the data using ; fdata(object), sdata(object), exprs(object)
+    
+    # 6 seperate bins
+    if (type == "pval_bins"){
+        geneList <- mutate(object, 
+                           cluster_id = ifelse(p <= 0.05 & effect <= 0, 1,
+                                               ifelse(p <= 0.22 & effect <= 0, 2,
+                                                      ifelse(p <=0.5 & effect <= 0,3,
+                                                             4
+                                                             ))))
+                                                                                                   
+    }
+    
+    if (type == "bins"){
+    geneList <- mutate(geneList, cluster_id = ifelse(p <= sig_level & effect <= 0, "Significant, effect < 0",ifelse(p <= sig_level & effect >= 0, "Significant, effect > 0", "insignificant")))
+        
+    }
+    
+    if (type == "dclust") {
+        
+        # extract expression values from object for contrast
+        exprs_data <- ...
+        out <- pheatmap::pheatmap(geneList,
+                                   scale = "row",
+                                   clustering_distance_rows = "euclidean",
+                                   clustering_distance_cols = "euclidean", 
+                                   clustering_method = "complete")
+        cutree(out$tree_row, k = k)
+        plot(out$tree_row)
+        abline(h = out$tree_row$height[length(out$tree_row$height)-(k-2)], 
+               col = "red", lty = 2, lwd = 2)
+        
+    }
+ 
+    if (type == "fuzzy") {
+        out <- ppclust::fcm(data, centers=3)
+        ppclust::plotcluster(out, trans=TRUE)
+        return(out)
+    }  
+    
+    # If return is an "object" the code will return an object of type "summarized experiments"
+    #fdata(object)
+    
+    # If return is an "object" the code will return an object of type "summarized experiments"
+    #object
+    
+}
+
+
+```
+
+```{r}
+
+# Call function with type = pval
+result <- add_cluster(data_file, type = "pval", contrast = "Sirt_vs_Mock", sig_level = 0.05 ,k = 4, plot = FALSE)
+
+# Call function with type = dclust
+result_dclust <- add_cluster(data_file, type = "dclust", contrast = "Sirt_vs_Mock", sig_level = 0.05 ,k = 4, plot = FALSE)
+
+# Call the function with type = fuzzy - throws an error - doesn't identify 'geneList' as a dataframe
+result_fuzzy <- add_cluster(data_file, type = "fuzzy", contrast = "Sirt_vs_Mock", sig_level = 0.05 ,k = 4, plot = FALSE)
+
+```
